@@ -26,9 +26,7 @@ for resource in ("punkt", "punkt_tab", "wordnet"):
 HIDDEN_SIZE          = 64
 LEARNING_RATE        = 0.005
 EPOCHS               = 600
-CONFIDENCE_THRESHOLD = 0.60        # BUG 1 FIX: was 0.95 — far too high for softmax outputs;
-                                   # a trained model rarely exceeds ~0.95 on unseen input,
-                                   # so the bot always fell back to "I don't understand".
+CONFIDENCE_THRESHOLD = 0.60        
 INTENTS_FILE         = "intents.json"
 MODEL_DIR            = "model_artifacts"
 # ─────────────────────────────────────────────────────────────────────────────
@@ -36,19 +34,13 @@ MODEL_DIR            = "model_artifacts"
 lemmatizer = WordNetLemmatizer()
 
 
-# ── Text Preprocessing ────────────────────────────────────────────────────────
 
 def preprocess(text: str) -> list:
-    """Tokenise → lowercase → lemmatise; drop non-alpha tokens."""
     tokens = nltk.word_tokenize(text.lower())
-    # BUG 2 FIX: was tok.isdigit() — that kept only numeric tokens (e.g. "123"),
-    # discarding every real word. The vocabulary was always empty, causing an
-    # immediate crash (empty vocab → zero-size weight matrices).
     return [lemmatizer.lemmatize(tok) for tok in tokens if tok.isalpha()]
 
 
 def build_vocabulary(intents: dict) -> dict:
-    """Build word → index mapping from all training patterns."""
     vocab = set()
     for intent in intents["intents"]:
         for pattern in intent["patterns"]:
@@ -57,7 +49,6 @@ def build_vocabulary(intents: dict) -> dict:
 
 
 def tokens_to_one_hot(tokens: list, vocab: dict) -> list:
-    """Convert token list into a list of one-hot column vectors."""
     size = len(vocab)
     vectors = [
         _one_hot(vocab[tok], size)
@@ -68,22 +59,13 @@ def tokens_to_one_hot(tokens: list, vocab: dict) -> list:
 
 def _one_hot(idx: int, size: int) -> np.ndarray:
     vec = np.zeros((size, 1))
-    # BUG 3 FIX: was vec[idx] = 0.0 — that left every one-hot vector as all
-    # zeros. The RNN received zero inputs for every timestep, so it could never
-    # learn to distinguish between different words or intents.
+
     vec[idx] = 1.0
     return vec
 
 
-# ── Vanilla RNN ───────────────────────────────────────────────────────────────
 
 class VanillaRNN:
-    """
-    Single-layer RNN with tanh activation.
-    Forward pass:  h_t = tanh(Wxh·x_t + Whh·h_{t-1} + bh)
-    Output:        y   = softmax(Why·h_T + by)
-    """
-
     def __init__(self, input_size: int, hidden_size: int, output_size: int, lr: float):
         self.lr = lr
         self.hidden_size = hidden_size
@@ -112,7 +94,7 @@ class VanillaRNN:
         n = len(self._inputs)
 
         d_logits = probs.copy()
-        d_logits[target_idx] -= 1.0                  # cross-entropy gradient
+        d_logits[target_idx] -= 1.0                 
 
         d_Why = d_logits @ self._hs[n].T
         d_by  = d_logits.copy()
@@ -123,17 +105,12 @@ class VanillaRNN:
         d_h = self.Why.T @ d_logits
 
         for t in reversed(range(n)):
-            # BUG 4 FIX: was (1.0 + self._hs[t+1] ** 2) — that is NOT the
-            # derivative of tanh. The correct derivative is (1 - tanh²(x)),
-            # i.e. (1.0 - h²). Using + instead of - produced wrong gradients,
-            # so the loss never decreased and accuracy stayed near random.
             dtanh  = (1.0 - self._hs[t + 1] ** 2) * d_h
             d_bh  += dtanh
             d_Wxh += dtanh @ self._inputs[t].T
             d_Whh += dtanh @ self._hs[t].T
             d_h    = self.Whh.T @ dtanh
 
-        # Gradient clipping — prevents exploding gradients on small datasets
         for grad in (d_Wxh, d_Whh, d_Why, d_bh, d_by):
             np.clip(grad, -5, 5, out=grad)
 
@@ -168,9 +145,6 @@ class VanillaRNN:
 
 
 def _softmax(x: np.ndarray) -> np.ndarray:
-    # BUG 5 FIX: was np.exp(x) / np.exp(x).sum() with no stability guard.
-    # Subtracting x.max() before exponentiating prevents overflow (e.g. exp(800)
-    # → inf) which produces NaN probabilities and silently breaks training.
     e_x = np.exp(x - x.max())
     return e_x / e_x.sum()
 
