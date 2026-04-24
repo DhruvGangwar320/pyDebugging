@@ -175,7 +175,6 @@ def _softmax(x: np.ndarray) -> np.ndarray:
     return e_x / e_x.sum()
 
 
-# ── Training ──────────────────────────────────────────────────────────────────
 
 def prepare_training_data(intents: dict, vocab: dict, encoder: LabelEncoder) -> list:
     data = []
@@ -259,7 +258,6 @@ def artifacts_exist() -> bool:
     )
 
 
-# ── Inference ─────────────────────────────────────────────────────────────────
 
 def predict_intent(text: str, rnn: VanillaRNN, vocab: dict, encoder: LabelEncoder) -> tuple:
     tokens  = preprocess(text)
@@ -276,7 +274,6 @@ def get_response(tag: str, intents: dict) -> str:
     return "I'm not sure I understand. Could you rephrase that?"
 
 
-# ── Chat Loop ─────────────────────────────────────────────────────────────────
 
 def start_chat(intents: dict, rnn: VanillaRNN, vocab: dict, encoder: LabelEncoder) -> None:
     divider = "─" * 52
@@ -307,8 +304,6 @@ def start_chat(intents: dict, rnn: VanillaRNN, vocab: dict, encoder: LabelEncode
 
         print(f"  PyBot : {response}\n")
 
-
-# ── Entry Point ───────────────────────────────────────────────────────────────
 
 def main() -> None:
     force_retrain = "--retrain" in sys.argv
